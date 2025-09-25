@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/comfy-deploy/paint/compare/v1.0.1...v1.0.2) (2025-09-25)
+
+### Bug Fixes
+
+- **cli:** correct command name from paintai to paint in user messages ([ac13043](https://github.com/comfy-deploy/paint/commit/ac13043df0982a03d0bf2d19be489882ac52a23a))
+
 ## [1.0.1](https://github.com/comfy-deploy/paint/compare/v1.0.0...v1.0.1) (2025-09-25)
 
 ### Bug Fixes
