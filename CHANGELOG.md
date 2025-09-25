@@ -1,3 +1,19 @@
+# 1.0.0 (2025-09-25)
+
+### Bug Fixes
+
+- ci ([f0e32d8](https://github.com/comfy-deploy/paint/commit/f0e32d8604cc56c0fe853c177c5b197962132d39))
+- **ci:** bypass commitlint validation for semantic-release commits ([67fc97b](https://github.com/comfy-deploy/paint/commit/67fc97b5301c65bc77d48981386d1f49d9c7bd6b))
+- **ci:** disable commitlint body-max-line-length rule ([ed9e222](https://github.com/comfy-deploy/paint/commit/ed9e222f0ab12b7ab96470e01c907a5729d53a75))
+- **ci:** increase commitlint body-max-line-length to 200 characters ([cb2f92b](https://github.com/comfy-deploy/paint/commit/cb2f92bca7a9acfec5f0923d2c21658b116690e6))
+- **ci:** temporarily disable commitlint hook for semantic-release ([2e7156c](https://github.com/comfy-deploy/paint/commit/2e7156c66cf2d5b05744a43434c46382cc3b31f8))
+- fix ([9cadef4](https://github.com/comfy-deploy/paint/commit/9cadef46ed2145462a4c4789e6cace3df5a07ef7))
+- **release:** configure semantic-release with proper GitHub token and repository URL ([fd1f723](https://github.com/comfy-deploy/paint/commit/fd1f72331501a1a01eea86bd8bf0a2115b93a89d))
+
+### Features
+
+- add automated versioning feature to README ([7e5866d](https://github.com/comfy-deploy/paint/commit/7e5866d7092ced2d7ad1aa16c89869a7c29bbffa))
+
 ## [1.0.1](https://github.com/comfy-deploy/paint/compare/7e5866d7092ced2d7ad1aa16c89869a7c29bbffa...v1.0.1) (2025-09-25)
 
 ### Features
