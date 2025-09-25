@@ -1,0 +1,49 @@
+{
+  "name": "paint",
+  "version": "1.0.0",
+  "description": "AI-powered image generation and editing CLI tool",
+  "main": "cli.tsx",
+  "bin": {
+    "paint": "./dist/cli.js"
+  },
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "dev": "bun setup-python-env.ts bun run --hot cli.tsx",
+    "start": "bun setup-python-env.ts cli.tsx",
+    "test": "bun setup-python-env.ts test1.tsx",
+    "build": "bun build cli.tsx --outdir ./dist --target bun",
+    "install-global": "npm link",
+    "uninstall-global": "npm unlink -g paint",
+    "completion-install": "paint --completion install",
+    "completion-uninstall": "paint --completion uninstall"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "dependencies": {
+    "@ai-sdk/fal": "^1.0.13",
+    "@clack/prompts": "^0.11.0",
+    "@fal-ai/client": "^1.6.2",
+    "@inkjs/ui": "^2.0.0",
+    "@types/yargs": "^17.0.33",
+    "ai": "^5.0.48",
+    "bun_python": "^0.1.10",
+    "ink": "^6.3.1",
+    "ink-image": "^2.0.0",
+    "jimp": "^1.6.0",
+    "pngjs": "^7.0.0",
+    "react": "^19.1.1",
+    "sharp": "^0.34.4",
+    "term-kitty-img": "^1.0.4",
+    "terminal-image": "^4.0.0",
+    "yargs": "^18.0.0"
+  }
+}
