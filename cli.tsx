@@ -18,10 +18,6 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-const fal = createFal({
-  apiKey: getApiKey(),
-});
-
 // Config file management
 const CONFIG_DIR = path.join(os.homedir(), '.paintai');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -92,9 +88,15 @@ function validateApiKey() {
   return apiKey;
 }
 
+const apiKey = getApiKey()!;
+
+const fal = createFal({
+  apiKey: apiKey,
+});
+
 // Configure fal client - validation will happen in command handlers
 falClient.config({
-  credentials: getApiKey(),
+  credentials: apiKey,
 });
 
 // Import additional dependencies for handlers
