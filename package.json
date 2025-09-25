@@ -74,6 +74,7 @@
     ]
   },
   "release": {
+    "repositoryUrl": "https://github.com/comfy-deploy/paint",
     "branches": [
       "main",
       {
