@@ -18,6 +18,10 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
+const fal = createFal({
+  apiKey: getApiKey(),
+});
+
 // Config file management
 const CONFIG_DIR = path.join(os.homedir(), '.paintai');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -94,7 +98,7 @@ falClient.config({
 });
 
 // Import additional dependencies for handlers
-import { fal } from '@ai-sdk/fal';
+import { createFal } from '@ai-sdk/fal';
 import { experimental_generateImage as generateImage } from 'ai';
 
 const reset = '\x1b[0m';
