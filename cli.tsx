@@ -800,6 +800,385 @@ async function handleVideoCommand(argv: any) {
   process.exit(0);
 }
 
+async function handleRmbgCommand(argv: any) {
+  // Validate API key for commands that need it
+  validateApiKey();
+
+  const currentDir = process.cwd();
+  const outputDir = argv.output
+    ? path.resolve(argv.output)
+    : path.join(currentDir, 'outputs');
+
+  // ensure outputs directory exists
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  // Extract positional arguments - yargs puts them in argv._ array
+  const imageFile = (argv.image as string) || ((argv._ && argv._[1]) as string);
+  let selectedImage;
+
+  // Check if imageFile parameter is provided
+  if (imageFile) {
+    // Validate that the provided file exists
+    if (!fs.existsSync(imageFile)) {
+      log.error(`Image file not found: ${imageFile}`);
+      process.exit(1);
+    }
+
+    // Check if it's a valid image file (basic check by extension)
+    const validExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+    const fileExtension = imageFile
+      .toLowerCase()
+      .substring(imageFile.lastIndexOf('.'));
+
+    if (!validExtensions.includes(fileExtension)) {
+      log.error(
+        `Invalid image file format: ${imageFile}. Supported formats: ${validExtensions.join(', ')}`
+      );
+      process.exit(1);
+    }
+
+    // Create image object for the provided file
+    const stats = fs.statSync(imageFile);
+    selectedImage = {
+      name: imageFile.split('/').pop() || imageFile,
+      path: imageFile,
+      stats: stats,
+    };
+
+    log.step(`Using provided image: ${selectedImage.name}`);
+  } else {
+    // Fall back to selecting from outputs folder
+    const allImages = getAllImages(outputDir);
+
+    if (allImages.length === 0) {
+      log.error('No images found in outputs folder to process');
+      process.exit(1);
+    }
+
+    // Pre-generate image previews
+    const imagePreviews = await Promise.all(
+      allImages.map(async img => {
+        const preview = await getImageSequence(img.path, 200);
+        return { image: img, preview };
+      })
+    );
+
+    const selectPrompt = new SelectPrompt<{ value: string }>({
+      options: allImages.map((img, index) => ({
+        value: index.toString(),
+        label: `${img.name} (${new Date(img.stats.mtime).toLocaleString()})`,
+      })),
+      render: function () {
+        const currentIndex = this.cursor;
+        const currentImageData = imagePreviews[currentIndex];
+
+        if (!currentImageData) {
+          return 'No image selected';
+        }
+
+        const optionsList = allImages
+          .map((img, index) => {
+            const isSelected = index === currentIndex;
+
+            if (isSelected) {
+              // Highlight the selected option
+              const prefix = `${bright}${cyan}❯${reset} `;
+              const label = `${bright}${yellow}${img.name}${reset} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            } else {
+              // Regular styling for non-selected options
+              const prefix = '  ';
+              const label = `${img.name} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            }
+          })
+          .join('\n');
+
+        // Clear screen and move cursor to top to prevent ghosting
+        const clearScreen = this.state == 'submit' ? '' : '\x1b[2J\x1b[H';
+
+        let output = `${clearScreen}◆  Select Image for Background Removal\n`;
+
+        output += indentBlock(optionsList, 2, this.state, false);
+
+        output += '\n';
+        output += indentBlock(
+          '  ' + currentImageData.preview ?? '',
+          2,
+          this.state,
+          false
+        );
+
+        if (this.state !== 'submit') {
+          output += '\n';
+          output += indentBlock(
+            `${dim}Use ↑↓ to select, Enter to confirm, Esc to cancel${reset}`,
+            2,
+            this.state
+          );
+        }
+
+        return output.trim();
+      },
+    });
+
+    const selectedImageIndex = await selectPrompt.prompt();
+
+    if (isCancel(selectedImageIndex)) {
+      cancel('Background removal cancelled.');
+      process.exit(0);
+    }
+
+    selectedImage = allImages[parseInt(selectedImageIndex as string)];
+    log.step(`Selected image: ${selectedImage.name}`);
+  }
+
+  // Show the selected image
+  const currentSequence = await getImageSequence(selectedImage.path, 500);
+  log.step('Current image:');
+  log.step(currentSequence ?? '');
+
+  const s = spinner();
+  s.start('Removing background...');
+
+  try {
+    // Upload the selected image to fal.ai storage
+    const imageFileToUpload = new File(
+      [fs.readFileSync(selectedImage.path)],
+      selectedImage.name,
+      {
+        type: 'image/png',
+      }
+    );
+    const imageUrl = await falClient.storage.upload(imageFileToUpload);
+
+    // Use the background removal model
+    const result = await falClient.subscribe('fal-ai/bria/background/remove', {
+      input: {
+        image_url: imageUrl,
+      },
+      logs: true,
+      onQueueUpdate: update => {
+        if (update.status === 'IN_PROGRESS') {
+          s.message(
+            `Processing... ${update.logs?.map(log => log.message).join(' ')}`
+          );
+        }
+      },
+    });
+
+    s.stop('Background removed');
+
+    // Save the processed image
+    const processedFilename = `image-${Date.now()}-rmbg.png`;
+    const processedPath = path.join(outputDir, processedFilename);
+
+    // Download the processed image
+    const imageResponse = await fetch(result.data.image.url);
+    const imageBuffer = await imageResponse.arrayBuffer();
+    fs.writeFileSync(processedPath, Buffer.from(imageBuffer));
+
+    log.step(`Processed image saved to ${processedFilename}`);
+
+    // Display the processed image
+    const processedSequence = await getImageSequence(processedPath, 500);
+    log.step(processedSequence ?? '');
+  } catch (error) {
+    s.stop('Background removal failed');
+    log.error(`Failed to remove background: ${error}`);
+    process.exit(1);
+  }
+
+  process.exit(0);
+}
+
+async function handleVisualCommand(argv: any) {
+  // Validate API key for commands that need it
+  validateApiKey();
+
+  const currentDir = process.cwd();
+  const outputDir = argv.output
+    ? path.resolve(argv.output)
+    : path.join(currentDir, 'outputs');
+
+  // ensure outputs directory exists
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  // Extract positional arguments - yargs puts them in argv._ array
+  const imageFile = (argv.image as string) || ((argv._ && argv._[1]) as string);
+  const promptFromArgs =
+    (argv.prompt as string) || ((argv._ && argv._[2]) as string);
+  let selectedImage;
+
+  // Check if imageFile parameter is provided
+  if (imageFile) {
+    // Validate that the provided file exists
+    if (!fs.existsSync(imageFile)) {
+      log.error(`Image file not found: ${imageFile}`);
+      process.exit(1);
+    }
+
+    // Check if it's a valid image file (basic check by extension)
+    const validExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+    const fileExtension = imageFile
+      .toLowerCase()
+      .substring(imageFile.lastIndexOf('.'));
+
+    if (!validExtensions.includes(fileExtension)) {
+      log.error(
+        `Invalid image file format: ${imageFile}. Supported formats: ${validExtensions.join(', ')}`
+      );
+      process.exit(1);
+    }
+
+    // Create image object for the provided file
+    const stats = fs.statSync(imageFile);
+    selectedImage = {
+      name: imageFile.split('/').pop() || imageFile,
+      path: imageFile,
+      stats: stats,
+    };
+
+    log.step(`Using provided image: ${selectedImage.name}`);
+  } else {
+    // Fall back to selecting from outputs folder
+    const allImages = getAllImages(outputDir);
+
+    if (allImages.length === 0) {
+      log.error('No images found in outputs folder to analyze');
+      process.exit(1);
+    }
+
+    // Pre-generate image previews
+    const imagePreviews = await Promise.all(
+      allImages.map(async img => {
+        const preview = await getImageSequence(img.path, 200);
+        return { image: img, preview };
+      })
+    );
+
+    const selectPrompt = new SelectPrompt<{ value: string }>({
+      options: allImages.map((img, index) => ({
+        value: index.toString(),
+        label: `${img.name} (${new Date(img.stats.mtime).toLocaleString()})`,
+      })),
+      render: function () {
+        const currentIndex = this.cursor;
+        const currentImageData = imagePreviews[currentIndex];
+
+        if (!currentImageData) {
+          return 'No image selected';
+        }
+
+        const optionsList = allImages
+          .map((img, index) => {
+            const isSelected = index === currentIndex;
+
+            if (isSelected) {
+              // Highlight the selected option
+              const prefix = `${bright}${cyan}❯${reset} `;
+              const label = `${bright}${yellow}${img.name}${reset} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            } else {
+              // Regular styling for non-selected options
+              const prefix = '  ';
+              const label = `${img.name} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            }
+          })
+          .join('\n');
+
+        // Clear screen and move cursor to top to prevent ghosting
+        const clearScreen = this.state == 'submit' ? '' : '\x1b[2J\x1b[H';
+
+        let output = `${clearScreen}◆  Select Image for Visual Analysis\n`;
+
+        output += indentBlock(optionsList, 2, this.state, false);
+
+        output += '\n';
+        output += indentBlock(
+          '  ' + currentImageData.preview ?? '',
+          2,
+          this.state,
+          false
+        );
+
+        if (this.state !== 'submit') {
+          output += '\n';
+          output += indentBlock(
+            `${dim}Use ↑↓ to select, Enter to confirm, Esc to cancel${reset}`,
+            2,
+            this.state
+          );
+        }
+
+        return output.trim();
+      },
+    });
+
+    const selectedImageIndex = await selectPrompt.prompt();
+
+    if (isCancel(selectedImageIndex)) {
+      cancel('Visual analysis cancelled.');
+      process.exit(0);
+    }
+
+    selectedImage = allImages[parseInt(selectedImageIndex as string)];
+    log.step(`Selected image: ${selectedImage.name}`);
+  }
+
+  // Show the selected image
+  const currentSequence = await getImageSequence(selectedImage.path, 500);
+  log.step('Current image:');
+  log.step(currentSequence ?? '');
+
+  // Get visual analysis prompt - use from args if provided, otherwise use default
+  const visualPrompt = promptFromArgs || 'Describe this image in detail';
+
+  const s = spinner();
+  s.start('Analyzing image...');
+
+  try {
+    // Upload the selected image to fal.ai storage
+    const imageFileToUpload = new File(
+      [fs.readFileSync(selectedImage.path)],
+      selectedImage.name,
+      {
+        type: 'image/png',
+      }
+    );
+    const imageUrl = await falClient.storage.upload(imageFileToUpload);
+
+    // Use the visual analysis model
+    const result = await falClient.subscribe('fal-ai/moondream-next', {
+      input: {
+        image_url: imageUrl,
+        prompt: visualPrompt as string,
+      },
+      logs: true,
+      onQueueUpdate: update => {
+        if (update.status === 'IN_PROGRESS') {
+          s.message(
+            `Analyzing... ${update.logs?.map(log => log.message).join(' ')}`
+          );
+        }
+      },
+    });
+
+    s.stop('Analysis complete');
+
+    // Display the result
+    log.step('Visual Analysis Result:');
+    log.step(result.data.output || 'No description available');
+  } catch (error) {
+    s.stop('Visual analysis failed');
+    log.error(`Failed to analyze image: ${error}`);
+    process.exit(1);
+  }
+
+  process.exit(0);
+}
+
 // Configure yargs
 const argv = await yargs(hideBin(process.argv))
   .scriptName('paint')
@@ -869,6 +1248,41 @@ const argv = await yargs(hideBin(process.argv))
     }
   )
   .command(
+    ['rmbg'],
+    'Remove background from an image',
+    yargs => {
+      return yargs
+        .positional('image', {
+          type: 'string',
+          describe: 'Path to image file for background removal',
+        })
+        .strict(false); // Allow positional arguments
+    },
+    async argv => {
+      await handleRmbgCommand(argv);
+    }
+  )
+  .command(
+    ['u'],
+    'Visual analysis of an image using AI',
+    yargs => {
+      return yargs
+        .positional('image', {
+          type: 'string',
+          describe: 'Path to image file for visual analysis',
+        })
+        .positional('prompt', {
+          type: 'string',
+          describe:
+            'Prompt for visual analysis (default: "Describe this image in detail")',
+        })
+        .strict(false); // Allow positional arguments
+    },
+    async argv => {
+      await handleVisualCommand(argv);
+    }
+  )
+  .command(
     'config',
     'Configure your FAL API key',
     yargs => {
@@ -921,12 +1335,16 @@ const argv = await yargs(hideBin(process.argv))
     // Handle completion for different contexts
     const prev = argv._[argv._.length - 1];
 
-    // Completion for edit command - show available images
+    // Completion for edit, rmbg, and u commands - show available images
     if (
       prev === 'edit' ||
       prev === 'e' ||
+      prev === 'rmbg' ||
+      prev === 'u' ||
       argv._.includes('edit') ||
-      argv._.includes('e')
+      argv._.includes('e') ||
+      argv._.includes('rmbg') ||
+      argv._.includes('u')
     ) {
       if (fs.existsSync('./outputs')) {
         return fs
@@ -960,6 +1378,8 @@ const argv = await yargs(hideBin(process.argv))
       'l',
       'edit',
       'e',
+      'rmbg',
+      'u',
       'config',
       '--help',
       '--version',
@@ -996,6 +1416,14 @@ const argv = await yargs(hideBin(process.argv))
   .example(
     '$0 video --aspect-ratio 9:16 --prompt "vertical video"',
     'Generate with specific aspect ratio'
+  )
+  .example('$0 rmbg', 'Remove background from an image (interactive)')
+  .example('$0 rmbg image.png', 'Remove background from specific image')
+  .example('$0 u', 'Analyze an image visually (interactive)')
+  .example('$0 u image.png', 'Analyze specific image with default prompt')
+  .example(
+    '$0 u image.png "What colors are in this image?"',
+    'Analyze with custom prompt'
   )
   .example('$0 config', 'Check API key status')
   .example('$0 config --api-key fal-xxx', 'Set up API key')
