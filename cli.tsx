@@ -9,6 +9,24 @@ import { hideBin } from "yargs/helpers";
 import path from "path";
 import fs from "fs";
 
+// Validate FAL_API_KEY early
+function validateApiKey() {
+  const apiKey = process.env.FAL_API_KEY;
+  
+  if (!apiKey) {
+    log.error('FAL_API_KEY is not set!');
+    log.info('To get your API key:');
+    log.info('1. Visit https://fal.ai/dashboard/keys');
+    log.info('2. Create a new API key');
+    log.info('3. Run: paint config --api-key YOUR_KEY_HERE');
+    log.info('   Or set it manually: export FAL_API_KEY="your-key"');
+    process.exit(1);
+  }
+  
+  return apiKey;
+}
+
+// Configure fal client - validation will happen in command handlers
 falClient.config({
   credentials: process.env.FAL_API_KEY,
 })
@@ -77,6 +95,83 @@ function getAllImages(outputDir: string) {
 }
 
 // Command handlers
+async function handleConfigCommand(argv: any) {
+  const apiKey = argv.apiKey as string;
+  const shell = process.env.SHELL || '/bin/bash';
+  const isZsh = shell.includes('zsh');
+  const isFish = shell.includes('fish');
+  const isBash = shell.includes('bash');
+  
+  if (apiKey) {
+    // Validate the provided API key
+    if (!apiKey.startsWith('fal-') || apiKey.length < 20) {
+      log.error('Invalid FAL_API_KEY format!');
+      log.info('Your API key should start with "fal-" and be longer than 20 characters.');
+      log.info('Get a valid key at: https://fal.ai/dashboard/keys');
+      process.exit(1);
+    }
+    
+    // Determine the appropriate shell config file
+    let configFile: string;
+    let exportCommand: string;
+    
+    if (isFish) {
+      configFile = '~/.config/fish/config.fish';
+      exportCommand = `set -gx FAL_API_KEY "${apiKey}"`;
+    } else if (isZsh) {
+      configFile = '~/.zshrc';
+      exportCommand = `export FAL_API_KEY="${apiKey}"`;
+    } else {
+      configFile = '~/.bashrc';
+      exportCommand = `export FAL_API_KEY="${apiKey}"`;
+    }
+    
+    log.step('Setting up FAL_API_KEY...');
+    log.info(`Add this line to your ${configFile}:`);
+    log.info(`  ${exportCommand}`);
+    log.info('');
+    log.info('Then restart your terminal or run:');
+    if (isFish) {
+      log.info('  source ~/.config/fish/config.fish');
+    } else if (isZsh) {
+      log.info('  source ~/.zshrc');
+    } else {
+      log.info('  source ~/.bashrc');
+    }
+    log.info('');
+    log.info('Or set it for this session only:');
+    log.info(`  ${exportCommand}`);
+    
+    process.exit(0);
+  } else {
+    // Show current status and help
+    const currentKey = process.env.FAL_API_KEY;
+    
+    if (currentKey) {
+      const maskedKey = currentKey.substring(0, 8) + '...' + currentKey.substring(currentKey.length - 4);
+      log.step(`FAL_API_KEY is set: ${maskedKey}`);
+    } else {
+      log.error('FAL_API_KEY is not set!');
+    }
+    
+    log.info('');
+    log.info('To configure your API key:');
+    log.info('1. Get your key from: https://fal.ai/dashboard/keys');
+    log.info('2. Run: paint config --api-key YOUR_KEY_HERE');
+    log.info('');
+    log.info('To set it manually:');
+    if (isFish) {
+      log.info('  echo \'set -gx FAL_API_KEY "your-key"\' >> ~/.config/fish/config.fish');
+    } else if (isZsh) {
+      log.info('  echo \'export FAL_API_KEY="your-key"\' >> ~/.zshrc');
+    } else {
+      log.info('  echo \'export FAL_API_KEY="your-key"\' >> ~/.bashrc');
+    }
+    
+    process.exit(0);
+  }
+}
+
 async function handleCompletionCommand(argv: any) {
   const completionShell = argv.shell as string;
   
@@ -123,6 +218,9 @@ async function handleLastCommand(argv: any) {
 }
 
 async function handleEditCommand(argv: any) {
+  // Validate API key for commands that need it
+  validateApiKey();
+  
   const currentDir = process.cwd();
   const outputDir = argv.output 
     ? path.resolve(argv.output)
@@ -273,6 +371,7 @@ async function handleEditCommand(argv: any) {
     providerOptions: {
       "fal": {
         image_url: imageUrl, // Pass the uploaded image URL
+        image_urls: [imageUrl],
       }
     }
   });
@@ -293,6 +392,9 @@ async function handleEditCommand(argv: any) {
 }
 
 async function handleImageCommand(argv: any) {
+  // Validate API key for commands that need it
+  validateApiKey();
+  
   const currentDir = process.cwd();
   const outputDir = argv.output 
     ? path.resolve(argv.output)
@@ -368,6 +470,15 @@ const argv = await yargs(hideBin(process.argv))
   }, async (argv) => {
     await handleEditCommand(argv);
   })
+  .command('config', 'Configure your FAL API key', (yargs) => {
+    return yargs
+      .option('api-key', {
+        type: 'string',
+        describe: 'Your Fal.ai API key'
+      })
+  }, async (argv) => {
+    await handleConfigCommand(argv);
+  })
   .command('completion [shell]', 'Generate completion script', (yargs) => {
     return yargs
       .positional('shell', {
@@ -426,7 +537,7 @@ const argv = await yargs(hideBin(process.argv))
     }
     
     // Default completions - only commands and flags, no prompt suggestions
-    return ['image', 'i', 'last', 'l', 'edit', 'e', '--help', '--version', '--debug', '--output', '--model', '-m'];
+    return ['image', 'i', 'last', 'l', 'edit', 'e', 'config', '--help', '--version', '--debug', '--output', '--model', '-m'];
   })
   .help('help')
   .alias('help', 'h')
@@ -439,6 +550,8 @@ const argv = await yargs(hideBin(process.argv))
   .example('$0 last', 'Show last image')
   .example('$0 edit', 'Edit mode (select image)')
   .example('$0 edit image.png --prompt "add clouds"', 'Edit specific image')
+  .example('$0 config', 'Check API key status')
+  .example('$0 config --api-key fal-xxx', 'Set up API key')
   .parse();
 
 // Extract values from yargs for debug mode

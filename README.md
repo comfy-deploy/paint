@@ -25,9 +25,10 @@ cd paint
 bun install
 ```
 
-3. Set up your environment:
+3. Set up your API key:
 ```bash
-export FAL_API_KEY="your-fal-api-key"
+# Get your API key from https://fal.ai/dashboard/keys
+paint config --api-key YOUR_FAL_API_KEY_HERE
 ```
 
 4. Build the project:
@@ -44,7 +45,31 @@ npm link
 
 ```bash
 npm install -g paint
+
+# Set up your API key
+paint config --api-key YOUR_FAL_API_KEY_HERE
 ```
+
+## Quick Start
+
+1. **Install the CLI** (when published):
+   ```bash
+   npm install -g paint
+   ```
+
+2. **Get your API key**:
+   - Visit [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys)
+   - Create a new API key
+
+3. **Configure the CLI**:
+   ```bash
+   paint config --api-key YOUR_FAL_API_KEY_HERE
+   ```
+
+4. **Generate your first image**:
+   ```bash
+   paint --prompt "a beautiful sunset over mountains"
+   ```
 
 ## Usage
 
@@ -65,6 +90,12 @@ paint e
 
 # Edit a specific image
 paint e image.png --prompt "add dramatic clouds"
+
+# Configure your API key
+paint config
+
+# Check API key status
+paint config
 ```
 
 ### Options
@@ -78,7 +109,8 @@ paint e image.png --prompt "add dramatic clouds"
 ### Environment Variables
 
 - `FAL_API_KEY` - Your Fal.ai API key (required)
-- `TERM_PROGRAM` - Terminal program for image display
+
+**Note**: Use `paint config --api-key YOUR_KEY` to set up your API key easily!
 
 ### Tab Completion
 
@@ -119,8 +151,8 @@ bun run uninstall-global
 
 ## Requirements
 
-- [Bun](https://bun.sh) runtime
-- Fal.ai API key
+- [Bun](https://bun.sh) runtime (for development)
+- Fal.ai API key (get one at [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys))
 - Terminal that supports image display (iTerm2, Kitty, etc.)
 
 ## License
