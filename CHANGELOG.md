@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/comfy-deploy/paint/compare/v1.0.2...v1.0.3) (2025-09-25)
+
+### Bug Fixes
+
+- handle positional prompt arguments in image command ([d7addc7](https://github.com/comfy-deploy/paint/commit/d7addc7b1263a3375a681018c7116e5a58405cc9))
+
 ## [1.0.2](https://github.com/comfy-deploy/paint/compare/v1.0.1...v1.0.2) (2025-09-25)
 
 ### Bug Fixes
