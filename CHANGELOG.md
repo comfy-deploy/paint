@@ -1,4 +1,4 @@
-## 1.0.1 (2025-09-25)
+## [1.0.1](https://github.com/comfy-deploy/paint/compare/7e5866d7092ced2d7ad1aa16c89869a7c29bbffa...v1.0.1) (2025-09-25)
 
 ### Features
 

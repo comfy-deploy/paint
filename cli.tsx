@@ -1,35 +1,97 @@
 #!/usr/bin/env bun
-import { getImageSequence } from "./termimg.js";
+import { getImageSequence } from './termimg.js';
 
-import { log, text, spinner, isCancel, cancel, select, group } from '@clack/prompts';
+import {
+  log,
+  text,
+  spinner,
+  isCancel,
+  cancel,
+  select,
+  group,
+} from '@clack/prompts';
 import { SelectPrompt } from '@clack/core';
-import { fal as falClient } from "@fal-ai/client";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
-import path from "path";
-import fs from "fs";
+import { fal as falClient } from '@fal-ai/client';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+
+// Config file management
+const CONFIG_DIR = path.join(os.homedir(), '.paintai');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+
+interface Config {
+  apiKey?: string;
+}
+
+function ensureConfigDir() {
+  if (!fs.existsSync(CONFIG_DIR)) {
+    fs.mkdirSync(CONFIG_DIR, { mode: 0o700 }); // Only user can read/write
+  }
+}
+
+function loadConfig(): Config {
+  ensureConfigDir();
+
+  if (!fs.existsSync(CONFIG_FILE)) {
+    return {};
+  }
+
+  try {
+    const data = fs.readFileSync(CONFIG_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    log.error('Failed to read config file. Please reconfigure your API key.');
+    return {};
+  }
+}
+
+function saveConfig(config: Config) {
+  ensureConfigDir();
+
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), {
+      mode: 0o600,
+    }); // Only user can read/write
+  } catch (error) {
+    log.error('Failed to save config file.');
+    throw error;
+  }
+}
+
+function getApiKey(): string | null {
+  // First check environment variable (for backward compatibility)
+  if (process.env.FAL_API_KEY) {
+    return process.env.FAL_API_KEY;
+  }
+
+  // Then check config file
+  const config = loadConfig();
+  return config.apiKey || null;
+}
 
 // Validate FAL_API_KEY early
 function validateApiKey() {
-  const apiKey = process.env.FAL_API_KEY;
-  
+  const apiKey = getApiKey();
+
   if (!apiKey) {
-    log.error('FAL_API_KEY is not set!');
+    log.error('FAL_API_KEY is not configured!');
     log.info('To get your API key:');
     log.info('1. Visit https://fal.ai/dashboard/keys');
     log.info('2. Create a new API key');
-    log.info('3. Run: paint config --api-key YOUR_KEY_HERE');
-    log.info('   Or set it manually: export FAL_API_KEY="your-key"');
+    log.info('3. Run: paintai config --api-key YOUR_KEY_HERE');
     process.exit(1);
   }
-  
+
   return apiKey;
 }
 
 // Configure fal client - validation will happen in command handlers
 falClient.config({
-  credentials: process.env.FAL_API_KEY,
-})
+  credentials: getApiKey(),
+});
 
 // Import additional dependencies for handlers
 import { fal } from '@ai-sdk/fal';
@@ -44,13 +106,21 @@ const dim = '\x1b[2m';
 const dim2x = '\x1b[90m';
 
 // Helper functions
-function indentBlock(content: string, spaces: number = 2, state: string = "active", checkLastLine = true): string {
+function indentBlock(
+  content: string,
+  spaces: number = 2,
+  state: string = 'active',
+  checkLastLine = true
+): string {
   const lines = content.split('\n');
   return lines
     .map((line, index) => {
       const isLastLine = index === lines.length - 1;
 
-      const symbol = state === 'submit' ? '│' : (isLastLine && checkLastLine ? '└' : '│').trim();
+      const symbol =
+        state === 'submit'
+          ? '│'
+          : (isLastLine && checkLastLine ? '└' : '│').trim();
       const indent = `${dim2x}${symbol}${reset}` + ' '.repeat(spaces).trim();
       return `${indent}${line}`.trim();
     })
@@ -63,12 +133,13 @@ function getLastImage(outputDir: string) {
     return null;
   }
 
-  const files = fs.readdirSync(outputDir)
+  const files = fs
+    .readdirSync(outputDir)
     .filter(file => file.startsWith('image-') && file.endsWith('.png'))
     .map(file => ({
       name: file,
       path: path.join(outputDir, file),
-      stats: fs.statSync(path.join(outputDir, file))
+      stats: fs.statSync(path.join(outputDir, file)),
     }))
     .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
 
@@ -81,12 +152,13 @@ function getAllImages(outputDir: string) {
     return [];
   }
 
-  const files = fs.readdirSync(outputDir)
+  const files = fs
+    .readdirSync(outputDir)
     .filter(file => file.startsWith('image-') && file.endsWith('.png'))
     .map(file => ({
       name: file,
       path: path.join(outputDir, file),
-      stats: fs.statSync(path.join(outputDir, file))
+      stats: fs.statSync(path.join(outputDir, file)),
     }))
     .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
     .slice(0, 50); // Limit to 50 images to prevent preview generation issues
@@ -97,84 +169,69 @@ function getAllImages(outputDir: string) {
 // Command handlers
 async function handleConfigCommand(argv: any) {
   const apiKey = argv.apiKey as string;
-  const shell = process.env.SHELL || '/bin/bash';
-  const isZsh = shell.includes('zsh');
-  const isFish = shell.includes('fish');
-  const isBash = shell.includes('bash');
-  
+
   if (apiKey) {
     // Validate the provided API key
     if (!apiKey.startsWith('fal-') || apiKey.length < 20) {
       log.error('Invalid FAL_API_KEY format!');
-      log.info('Your API key should start with "fal-" and be longer than 20 characters.');
+      log.info(
+        'Your API key should start with "fal-" and be longer than 20 characters.'
+      );
       log.info('Get a valid key at: https://fal.ai/dashboard/keys');
       process.exit(1);
     }
-    
-    // Determine the appropriate shell config file
-    let configFile: string;
-    let exportCommand: string;
-    
-    if (isFish) {
-      configFile = '~/.config/fish/config.fish';
-      exportCommand = `set -gx FAL_API_KEY "${apiKey}"`;
-    } else if (isZsh) {
-      configFile = '~/.zshrc';
-      exportCommand = `export FAL_API_KEY="${apiKey}"`;
-    } else {
-      configFile = '~/.bashrc';
-      exportCommand = `export FAL_API_KEY="${apiKey}"`;
+
+    // Save to secure config file
+    try {
+      const config = loadConfig();
+      config.apiKey = apiKey;
+      saveConfig(config);
+
+      log.step('API key saved securely!');
+      log.info('Your API key has been saved to a secure config file.');
+      log.info(`Config location: ${CONFIG_FILE}`);
+      log.info('');
+      log.info(
+        'You can now use paintai commands without setting environment variables.'
+      );
+    } catch (error) {
+      log.error('Failed to save API key. Please try again.');
+      process.exit(1);
     }
-    
-    log.step('Setting up FAL_API_KEY...');
-    log.info(`Add this line to your ${configFile}:`);
-    log.info(`  ${exportCommand}`);
-    log.info('');
-    log.info('Then restart your terminal or run:');
-    if (isFish) {
-      log.info('  source ~/.config/fish/config.fish');
-    } else if (isZsh) {
-      log.info('  source ~/.zshrc');
-    } else {
-      log.info('  source ~/.bashrc');
-    }
-    log.info('');
-    log.info('Or set it for this session only:');
-    log.info(`  ${exportCommand}`);
-    
+
     process.exit(0);
   } else {
     // Show current status and help
-    const currentKey = process.env.FAL_API_KEY;
-    
+    const currentKey = getApiKey();
+
     if (currentKey) {
-      const maskedKey = currentKey.substring(0, 8) + '...' + currentKey.substring(currentKey.length - 4);
-      log.step(`FAL_API_KEY is set: ${maskedKey}`);
+      const maskedKey =
+        currentKey.substring(0, 8) +
+        '...' +
+        currentKey.substring(currentKey.length - 4);
+      const source = process.env.FAL_API_KEY
+        ? 'environment variable'
+        : 'config file';
+      log.step(`FAL_API_KEY is configured: ${maskedKey} (from ${source})`);
     } else {
-      log.error('FAL_API_KEY is not set!');
+      log.error('FAL_API_KEY is not configured!');
     }
-    
+
     log.info('');
     log.info('To configure your API key:');
     log.info('1. Get your key from: https://fal.ai/dashboard/keys');
-    log.info('2. Run: paint config --api-key YOUR_KEY_HERE');
+    log.info('2. Run: paintai config --api-key YOUR_KEY_HERE');
     log.info('');
-    log.info('To set it manually:');
-    if (isFish) {
-      log.info('  echo \'set -gx FAL_API_KEY "your-key"\' >> ~/.config/fish/config.fish');
-    } else if (isZsh) {
-      log.info('  echo \'export FAL_API_KEY="your-key"\' >> ~/.zshrc');
-    } else {
-      log.info('  echo \'export FAL_API_KEY="your-key"\' >> ~/.bashrc');
-    }
-    
+    log.info('The API key will be stored securely in a local config file.');
+    log.info('No need to modify shell configuration files!');
+
     process.exit(0);
   }
 }
 
 async function handleCompletionCommand(argv: any) {
   const completionShell = argv.shell as string;
-  
+
   if (completionShell) {
     // Let yargs handle the completion script generation
     process.exit(0);
@@ -200,7 +257,7 @@ After adding the line, restart your terminal or run:
 
 async function handleLastCommand(argv: any) {
   const currentDir = process.cwd();
-  const outputDir = argv.output 
+  const outputDir = argv.output
     ? path.resolve(argv.output)
     : path.join(currentDir, 'outputs');
 
@@ -220,9 +277,9 @@ async function handleLastCommand(argv: any) {
 async function handleEditCommand(argv: any) {
   // Validate API key for commands that need it
   validateApiKey();
-  
+
   const currentDir = process.cwd();
-  const outputDir = argv.output 
+  const outputDir = argv.output
     ? path.resolve(argv.output)
     : path.join(currentDir, 'outputs');
 
@@ -230,8 +287,9 @@ async function handleEditCommand(argv: any) {
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Extract positional arguments - yargs puts them in argv._ array
-  const imageFile = argv.image as string || (argv._ && argv._[1]) as string;
-  const promptFromArgs = argv.prompt as string || (argv._ && argv._[2]) as string;
+  const imageFile = (argv.image as string) || ((argv._ && argv._[1]) as string);
+  const promptFromArgs =
+    (argv.prompt as string) || ((argv._ && argv._[2]) as string);
   let selectedImage;
 
   // Check if imageFile parameter is provided
@@ -244,10 +302,14 @@ async function handleEditCommand(argv: any) {
 
     // Check if it's a valid image file (basic check by extension)
     const validExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
-    const fileExtension = imageFile.toLowerCase().substring(imageFile.lastIndexOf('.'));
-    
+    const fileExtension = imageFile
+      .toLowerCase()
+      .substring(imageFile.lastIndexOf('.'));
+
     if (!validExtensions.includes(fileExtension)) {
-      log.error(`Invalid image file format: ${imageFile}. Supported formats: ${validExtensions.join(', ')}`);
+      log.error(
+        `Invalid image file format: ${imageFile}. Supported formats: ${validExtensions.join(', ')}`
+      );
       process.exit(1);
     }
 
@@ -256,7 +318,7 @@ async function handleEditCommand(argv: any) {
     selectedImage = {
       name: imageFile.split('/').pop() || imageFile,
       path: imageFile,
-      stats: stats
+      stats: stats,
     };
 
     log.step(`Using provided image: ${selectedImage.name}`);
@@ -271,7 +333,7 @@ async function handleEditCommand(argv: any) {
 
     // Pre-generate image previews
     const imagePreviews = await Promise.all(
-      allImages.map(async (img) => {
+      allImages.map(async img => {
         const preview = await getImageSequence(img.path, 200);
         return { image: img, preview };
       })
@@ -287,26 +349,28 @@ async function handleEditCommand(argv: any) {
         const currentImageData = imagePreviews[currentIndex];
 
         if (!currentImageData) {
-          return "No image selected";
+          return 'No image selected';
         }
 
-        const optionsList = allImages.map((img, index) => {
-          const isSelected = index === currentIndex;
+        const optionsList = allImages
+          .map((img, index) => {
+            const isSelected = index === currentIndex;
 
-          if (isSelected) {
-            // Highlight the selected option
-            const prefix = `${bright}${cyan}❯${reset} `;
-            const label = `${bright}${yellow}${img.name}${reset} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
-            return `${prefix}${label}`;
-          } else {
-            // Regular styling for non-selected options
-            const prefix = '  ';
-            const label = `${img.name} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
-            return `${prefix}${label}`;
-          }
-        }).join('\n');
+            if (isSelected) {
+              // Highlight the selected option
+              const prefix = `${bright}${cyan}❯${reset} `;
+              const label = `${bright}${yellow}${img.name}${reset} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            } else {
+              // Regular styling for non-selected options
+              const prefix = '  ';
+              const label = `${img.name} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+              return `${prefix}${label}`;
+            }
+          })
+          .join('\n');
 
-        // Clear screen and move cursor to top to prevent ghosting  
+        // Clear screen and move cursor to top to prevent ghosting
         const clearScreen = this.state == 'submit' ? '' : '\x1b[2J\x1b[H';
 
         let output = `${clearScreen}◆  Select Image\n`;
@@ -314,15 +378,24 @@ async function handleEditCommand(argv: any) {
         output += indentBlock(optionsList, 2, this.state, false);
 
         output += '\n';
-        output += indentBlock("  " + currentImageData.preview ?? '', 2, this.state, false);
+        output += indentBlock(
+          '  ' + currentImageData.preview ?? '',
+          2,
+          this.state,
+          false
+        );
 
         if (this.state !== 'submit') {
           output += '\n';
-          output += indentBlock(`${dim}Use ↑↓ to select, Enter to confirm, Esc to cancel${reset}`, 2, this.state);
+          output += indentBlock(
+            `${dim}Use ↑↓ to select, Enter to confirm, Esc to cancel${reset}`,
+            2,
+            this.state
+          );
         }
 
         return output.trim();
-      }
+      },
     });
 
     const selectedImageIndex = await selectPrompt.prompt();
@@ -342,11 +415,13 @@ async function handleEditCommand(argv: any) {
   log.step(currentSequence ?? '');
 
   // Get edit prompt - use from args if provided, otherwise prompt user
-  const editPrompt = promptFromArgs || await text({
-    message: 'Edit prompt',
-    placeholder: 'Make the sky more dramatic, add some clouds',
-    initialValue: '',
-  });
+  const editPrompt =
+    promptFromArgs ||
+    (await text({
+      message: 'Edit prompt',
+      placeholder: 'Make the sky more dramatic, add some clouds',
+      initialValue: '',
+    }));
 
   if (isCancel(editPrompt)) {
     cancel('Edit operation cancelled.');
@@ -357,23 +432,29 @@ async function handleEditCommand(argv: any) {
   s.start('Uploading image and editing...');
 
   // Upload the selected image to fal.ai storage
-  const imageFileToUpload = new File([fs.readFileSync(selectedImage.path)], selectedImage.name, {
-    type: 'image/png'
-  });
+  const imageFileToUpload = new File(
+    [fs.readFileSync(selectedImage.path)],
+    selectedImage.name,
+    {
+      type: 'image/png',
+    }
+  );
   const imageUrl = await falClient.storage.upload(imageFileToUpload);
 
   // Use the uploaded image for editing
-  const editModelName = argv.model as string || 'qwen-image-edit'; // Default for editing
-  const fullEditModelName = editModelName.startsWith('fal-ai/') ? editModelName : `fal-ai/${editModelName}`;
+  const editModelName = (argv.model as string) || 'qwen-image-edit'; // Default for editing
+  const fullEditModelName = editModelName.startsWith('fal-ai/')
+    ? editModelName
+    : `fal-ai/${editModelName}`;
   const { image: editedImage } = await generateImage({
     model: fal.image(fullEditModelName),
     prompt: editPrompt as string,
     providerOptions: {
-      "fal": {
+      fal: {
         image_url: imageUrl, // Pass the uploaded image URL
         image_urls: [imageUrl],
-      }
-    }
+      },
+    },
   });
 
   s.stop('Editing image');
@@ -394,9 +475,9 @@ async function handleEditCommand(argv: any) {
 async function handleImageCommand(argv: any) {
   // Validate API key for commands that need it
   validateApiKey();
-  
+
   const currentDir = process.cwd();
-  const outputDir = argv.output 
+  const outputDir = argv.output
     ? path.resolve(argv.output)
     : path.join(currentDir, 'outputs');
 
@@ -405,11 +486,13 @@ async function handleImageCommand(argv: any) {
 
   const promptFromArgs = argv.prompt as string;
 
-  const prompt = promptFromArgs || await text({
-    message: 'Prompt',
-    placeholder: 'A serene mountain landscape at sunset',
-    initialValue: 'A serene mountain landscape at sunset',
-  });
+  const prompt =
+    promptFromArgs ||
+    (await text({
+      message: 'Prompt',
+      placeholder: 'A serene mountain landscape at sunset',
+      initialValue: 'A serene mountain landscape at sunset',
+    }));
 
   if (isCancel(prompt)) {
     cancel('Operation cancelled.');
@@ -419,8 +502,10 @@ async function handleImageCommand(argv: any) {
   const s = spinner();
   s.start('Generating image');
 
-  const modelName = argv.model as string || 'flux/dev'; // Default for generation
-  const fullModelName = modelName.startsWith('fal-ai/') ? modelName : `fal-ai/${modelName}`;
+  const modelName = (argv.model as string) || 'flux/dev'; // Default for generation
+  const fullModelName = modelName.startsWith('fal-ai/')
+    ? modelName
+    : `fal-ai/${modelName}`;
   const { image, providerMetadata } = await generateImage({
     model: fal.image(fullModelName),
     prompt: prompt as string,
@@ -444,100 +529,144 @@ async function handleImageCommand(argv: any) {
 const argv = await yargs(hideBin(process.argv))
   .scriptName('paint')
   .usage('$0 [COMMAND] [OPTIONS]')
-  .command(['image', 'i'], 'Generate a new image', (yargs) => {
-    return yargs
-      .positional('prompt', {
+  .command(
+    ['image', 'i'],
+    'Generate a new image',
+    yargs => {
+      return yargs.positional('prompt', {
         type: 'string',
-        describe: 'Prompt for image generation'
-      })
-  }, async (argv) => {
-    await handleImageCommand(argv);
-  })
-  .command(['last', 'l'], 'Display the last generated image', {}, async (argv) => {
-    await handleLastCommand(argv);
-  })
-  .command(['edit', 'e'], 'Edit an existing image', (yargs) => {
-    return yargs
-      .positional('image', {
+        describe: 'Prompt for image generation',
+      });
+    },
+    async argv => {
+      await handleImageCommand(argv);
+    }
+  )
+  .command(
+    ['last', 'l'],
+    'Display the last generated image',
+    {},
+    async argv => {
+      await handleLastCommand(argv);
+    }
+  )
+  .command(
+    ['edit', 'e'],
+    'Edit an existing image',
+    yargs => {
+      return yargs
+        .positional('image', {
+          type: 'string',
+          describe: 'Path to image file to edit',
+        })
+        .positional('prompt', {
+          type: 'string',
+          describe: 'Prompt for image editing',
+        })
+        .strict(false); // Allow positional arguments
+    },
+    async argv => {
+      await handleEditCommand(argv);
+    }
+  )
+  .command(
+    'config',
+    'Configure your FAL API key',
+    yargs => {
+      return yargs.option('api-key', {
         type: 'string',
-        describe: 'Path to image file to edit'
-      })
-      .positional('prompt', {
-        type: 'string',
-        describe: 'Prompt for image editing'
-      })
-      .strict(false) // Allow positional arguments
-  }, async (argv) => {
-    await handleEditCommand(argv);
-  })
-  .command('config', 'Configure your FAL API key', (yargs) => {
-    return yargs
-      .option('api-key', {
-        type: 'string',
-        describe: 'Your Fal.ai API key'
-      })
-  }, async (argv) => {
-    await handleConfigCommand(argv);
-  })
-  .command('completion [shell]', 'Generate completion script', (yargs) => {
-    return yargs
-      .positional('shell', {
+        describe: 'Your Fal.ai API key',
+      });
+    },
+    async argv => {
+      await handleConfigCommand(argv);
+    }
+  )
+  .command(
+    'completion [shell]',
+    'Generate completion script',
+    yargs => {
+      return yargs.positional('shell', {
         type: 'string',
         describe: 'Shell type (bash, zsh, fish)',
-        choices: ['bash', 'zsh', 'fish']
-      })
-  }, async (argv) => {
-    await handleCompletionCommand(argv);
-  })
+        choices: ['bash', 'zsh', 'fish'],
+      });
+    },
+    async argv => {
+      await handleCompletionCommand(argv);
+    }
+  )
   .option('output', {
     alias: 'o',
     type: 'string',
     describe: 'Output directory (default: ./outputs)',
-    default: './outputs'
+    default: './outputs',
   })
   .option('prompt', {
     type: 'string',
-    describe: 'Provide prompt as argument'
+    describe: 'Provide prompt as argument',
   })
   .option('model', {
     alias: 'm',
     type: 'string',
-    describe: 'Model to use (default: flux/dev for generation, qwen-image-edit for editing)'
+    describe:
+      'Model to use (default: flux/dev for generation, qwen-image-edit for editing)',
   })
   .option('debug', {
     alias: 'd',
     type: 'boolean',
     describe: 'Enable debug mode',
-    default: false
+    default: false,
   })
   .completion('completion', async (current, argv) => {
     // Handle completion for different contexts
     const prev = argv._[argv._.length - 1];
-    
+
     // Completion for edit command - show available images
-    if (prev === 'edit' || prev === 'e' || argv._.includes('edit') || argv._.includes('e')) {
+    if (
+      prev === 'edit' ||
+      prev === 'e' ||
+      argv._.includes('edit') ||
+      argv._.includes('e')
+    ) {
       if (fs.existsSync('./outputs')) {
-        return fs.readdirSync('./outputs')
+        return fs
+          .readdirSync('./outputs')
           .filter(file => file.endsWith('.png'))
           .map(file => `./outputs/${file}`);
       }
       return [];
     }
-    
+
     // Completion for --output option - show directories
     if (current.startsWith('-') && current.includes('output')) {
-      return fs.readdirSync('.')
+      return fs
+        .readdirSync('.')
         .filter(item => fs.statSync(item).isDirectory())
         .map(dir => `./${dir}/`);
     }
-    
+
     // Don't provide completions for --prompt option to avoid weird suggestions
     if (current.startsWith('--prompt') || current.includes('prompt')) {
       return [];
     }
-    
+
     // Default completions - only commands and flags, no prompt suggestions
-    return ['image', 'i', 'last', 'l', 'edit', 'e', 'config', '--help', '--version', '--debug', '--output', '--model', '-m'];
+    return [
+      'image',
+      'i',
+      'last',
+      'l',
+      'edit',
+      'e',
+      'config',
+      '--help',
+      '--version',
+      '--debug',
+      '--output',
+      '--model',
+      '-m',
+    ];
   })
   .help('help')
   .alias('help', 'h')
@@ -545,7 +674,10 @@ const argv = await yargs(hideBin(process.argv))
   .alias('version', 'v')
   .example('$0', 'Interactive image generation')
   .example('$0 --prompt "a sunset over mountains"', 'Generate with prompt')
-  .example('$0 -m "flux/pro" --prompt "a sunset over mountains"', 'Generate with specific model')
+  .example(
+    '$0 -m "flux/pro" --prompt "a sunset over mountains"',
+    'Generate with specific model'
+  )
   .example('$0 -o ./my-images', 'Save to custom directory')
   .example('$0 last', 'Show last image')
   .example('$0 edit', 'Edit mode (select image)')

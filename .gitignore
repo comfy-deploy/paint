@@ -142,3 +142,6 @@ vite.config.ts.timestamp-*
 
 test1.tsx
 outputs
+
+# PaintAI config files (contains API keys)
+.paintai/
