@@ -1,3 +1,9 @@
+# [1.1.0](https://github.com/comfy-deploy/paint/compare/v1.0.5...v1.1.0) (2025-09-25)
+
+### Features
+
+- video ([4813749](https://github.com/comfy-deploy/paint/commit/4813749bd88635b64b0ad91d4edfb57ad10b6b8a))
+
 ## [1.0.5](https://github.com/comfy-deploy/paint/compare/v1.0.4...v1.0.5) (2025-09-25)
 
 ### Bug Fixes
