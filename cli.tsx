@@ -474,7 +474,9 @@ async function handleImageCommand(argv: any) {
   // ensure outputs directory exists
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const promptFromArgs = argv.prompt as string;
+  // Extract prompt from positional arguments or named option
+  const promptFromArgs =
+    (argv.prompt as string) || ((argv._ && argv._[1]) as string);
 
   const prompt =
     promptFromArgs ||
