@@ -1,3 +1,9 @@
+## [1.0.4](https://github.com/comfy-deploy/paint/compare/v1.0.3...v1.0.4) (2025-09-25)
+
+### Bug Fixes
+
+- improve FAL client initialization reliability ([0f2c84d](https://github.com/comfy-deploy/paint/commit/0f2c84d7781968df27afa706271fb683ef76c227))
+
 ## [1.0.3](https://github.com/comfy-deploy/paint/compare/v1.0.2...v1.0.3) (2025-09-25)
 
 ### Bug Fixes
