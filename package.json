@@ -1,6 +1,6 @@
 {
   "name": "paintai",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "AI-powered image generation and editing CLI tool",
   "main": "cli.tsx",
   "bin": {
