@@ -81,7 +81,7 @@ function validateApiKey() {
     log.info('To get your API key:');
     log.info('1. Visit https://fal.ai/dashboard/keys');
     log.info('2. Create a new API key');
-    log.info('3. Run: paintai config --api-key YOUR_KEY_HERE');
+    log.info('3. Run: paint config --api-key YOUR_KEY_HERE');
     process.exit(1);
   }
 
@@ -171,16 +171,6 @@ async function handleConfigCommand(argv: any) {
   const apiKey = argv.apiKey as string;
 
   if (apiKey) {
-    // Validate the provided API key
-    if (!apiKey.startsWith('fal-') || apiKey.length < 20) {
-      log.error('Invalid FAL_API_KEY format!');
-      log.info(
-        'Your API key should start with "fal-" and be longer than 20 characters.'
-      );
-      log.info('Get a valid key at: https://fal.ai/dashboard/keys');
-      process.exit(1);
-    }
-
     // Save to secure config file
     try {
       const config = loadConfig();
@@ -192,7 +182,7 @@ async function handleConfigCommand(argv: any) {
       log.info(`Config location: ${CONFIG_FILE}`);
       log.info('');
       log.info(
-        'You can now use paintai commands without setting environment variables.'
+        'You can now use paint commands without setting environment variables.'
       );
     } catch (error) {
       log.error('Failed to save API key. Please try again.');
@@ -220,7 +210,7 @@ async function handleConfigCommand(argv: any) {
     log.info('');
     log.info('To configure your API key:');
     log.info('1. Get your key from: https://fal.ai/dashboard/keys');
-    log.info('2. Run: paintai config --api-key YOUR_KEY_HERE');
+    log.info('2. Run: paint config --api-key YOUR_KEY_HERE');
     log.info('');
     log.info('The API key will be stored securely in a local config file.');
     log.info('No need to modify shell configuration files!');
