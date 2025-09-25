@@ -8,6 +8,7 @@ AI-powered image generation and editing CLI tool built with Bun and Fal.ai.
 - ✏️ Edit existing images with AI
 - 🖼️ Display images directly in your terminal
 - 📁 Manage generated images locally
+- 🚀 Fast and efficient processing with Bun runtime
 - 🚀 Fast and lightweight
 - 🔄 Automated versioning with conventional commits
 
