@@ -1,6 +1,6 @@
 {
-  "name": "paint",
-  "version": "1.0.0",
+  "name": "paintai",
+  "version": "1.0.1",
   "description": "AI-powered image generation and editing CLI tool",
   "main": "cli.tsx",
   "bin": {
@@ -16,10 +16,35 @@
     "install-global": "npm link",
     "uninstall-global": "npm unlink -g paint",
     "completion-install": "paint --completion install",
-    "completion-uninstall": "paint --completion uninstall"
+    "completion-uninstall": "paint --completion uninstall",
+    "commit": "git-cz",
+    "commit:retry": "git-cz --retry",
+    "prepare": "husky",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run",
+    "release:local": "semantic-release --extends ./.releaserc.local.json",
+    "release:local-dry": "semantic-release --extends ./.releaserc.local.json --dry-run",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
+    "changelog:all": "conventional-changelog -p angular -i CHANGELOG.md -s",
+    "lint-staged": "lint-staged",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "bun run format:check && bun run build",
+    "version:check": "semantic-release --dry-run --no-ci"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/bun": "latest",
+    "commitizen": "^4.3.1",
+    "conventional-changelog-cli": "^5.0.0",
+    "cz-conventional-changelog": "^3.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.0",
+    "prettier": "^3.6.2",
+    "semantic-release": "^24.2.9"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -28,6 +53,57 @@
     "dist/",
     "README.md"
   ],
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write",
+      "git add"
+    ],
+    "*.{json,md}": [
+      "prettier --write",
+      "git add"
+    ]
+  },
+  "release": {
+    "branches": [
+      "main",
+      {
+        "name": "beta",
+        "prerelease": true
+      }
+    ],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      [
+        "@semantic-release/changelog",
+        {
+          "changelogFile": "CHANGELOG.md"
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "CHANGELOG.md",
+            "package.json"
+          ],
+          "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        }
+      ],
+      "@semantic-release/npm",
+      "@semantic-release/github"
+    ]
+  },
   "dependencies": {
     "@ai-sdk/fal": "^1.0.13",
     "@clack/prompts": "^0.11.0",
