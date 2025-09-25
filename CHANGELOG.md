@@ -1,3 +1,9 @@
+## [1.0.5](https://github.com/comfy-deploy/paint/compare/v1.0.4...v1.0.5) (2025-09-25)
+
+### Bug Fixes
+
+- run ([d78d561](https://github.com/comfy-deploy/paint/commit/d78d5611077e736a9ab5c68a9b78b0e2d9fdc09b))
+
 ## [1.0.4](https://github.com/comfy-deploy/paint/compare/v1.0.3...v1.0.4) (2025-09-25)
 
 ### Bug Fixes
