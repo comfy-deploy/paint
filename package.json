@@ -10,7 +10,7 @@
   "private": false,
   "scripts": {
     "dev": "bun setup-python-env.ts bun run --hot cli.tsx",
-    "start": "bun setup-python-env.ts cli.tsx",
+    "start": "bun cli.tsx",
     "test": "bun setup-python-env.ts test1.tsx",
     "build": "bun build cli.tsx --outdir ./dist --target bun",
     "install-global": "npm link",

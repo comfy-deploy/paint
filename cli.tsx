@@ -103,6 +103,9 @@ falClient.config({
 import { createFal } from '@ai-sdk/fal';
 import { experimental_generateImage as generateImage } from 'ai';
 
+// Video generation types
+type AspectRatio = '16:9' | '9:16' | '1:1';
+
 const reset = '\x1b[0m';
 const bright = '\x1b[1m';
 const cyan = '\x1b[36m';
@@ -523,6 +526,280 @@ async function handleImageCommand(argv: any) {
   process.exit(0);
 }
 
+async function handleVideoCommand(argv: any) {
+  // Validate API key for commands that need it
+  validateApiKey();
+
+  const currentDir = process.cwd();
+  const outputDir = argv.output
+    ? path.resolve(argv.output)
+    : path.join(currentDir, 'outputs');
+
+  // ensure outputs directory exists
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  // Extract positional arguments - yargs puts them in argv._ array
+  const imageFile = (argv.image as string) || ((argv._ && argv._[1]) as string);
+  const promptFromArgs =
+    (argv.prompt as string) || ((argv._ && argv._[2]) as string);
+
+  let selectedImage;
+  let isImageToVideo = false;
+
+  // Check if imageFile parameter is provided
+  if (imageFile) {
+    // Validate that the provided file exists
+    if (!fs.existsSync(imageFile)) {
+      log.error(`Image file not found: ${imageFile}`);
+      process.exit(1);
+    }
+
+    // Check if it's a valid image file (basic check by extension)
+    const validExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+    const fileExtension = imageFile
+      .toLowerCase()
+      .substring(imageFile.lastIndexOf('.'));
+
+    if (!validExtensions.includes(fileExtension)) {
+      log.error(
+        `Invalid image file format: ${imageFile}. Supported formats: ${validExtensions.join(', ')}`
+      );
+      process.exit(1);
+    }
+
+    // Create image object for the provided file
+    const stats = fs.statSync(imageFile);
+    selectedImage = {
+      name: imageFile.split('/').pop() || imageFile,
+      path: imageFile,
+      stats: stats,
+    };
+
+    isImageToVideo = true;
+    log.step(`Using provided image for image-to-video: ${selectedImage.name}`);
+  } else {
+    // For text-to-video, we can optionally select from outputs folder
+    const allImages = getAllImages(outputDir);
+
+    if (allImages.length > 0) {
+      // Ask user if they want to use an existing image
+      const useImage = await select({
+        message: 'Do you want to use an existing image for image-to-video?',
+        options: [
+          { value: 'no', label: 'No, generate text-to-video' },
+          { value: 'yes', label: 'Yes, select an image for image-to-video' },
+        ],
+      });
+
+      if (isCancel(useImage)) {
+        cancel('Video generation cancelled.');
+        process.exit(0);
+      }
+
+      if (useImage === 'yes') {
+        // Pre-generate image previews
+        const imagePreviews = await Promise.all(
+          allImages.map(async img => {
+            const preview = await getImageSequence(img.path, 200);
+            return { image: img, preview };
+          })
+        );
+
+        const selectPrompt = new SelectPrompt<{ value: string }>({
+          options: allImages.map((img, index) => ({
+            value: index.toString(),
+            label: `${img.name} (${new Date(img.stats.mtime).toLocaleString()})`,
+          })),
+          render: function () {
+            const currentIndex = this.cursor;
+            const currentImageData = imagePreviews[currentIndex];
+
+            if (!currentImageData) {
+              return 'No image selected';
+            }
+
+            const optionsList = allImages
+              .map((img, index) => {
+                const isSelected = index === currentIndex;
+
+                if (isSelected) {
+                  // Highlight the selected option
+                  const prefix = `${bright}${cyan}❯${reset} `;
+                  const label = `${bright}${yellow}${img.name}${reset} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+                  return `${prefix}${label}`;
+                } else {
+                  // Regular styling for non-selected options
+                  const prefix = '  ';
+                  const label = `${img.name} ${dim}(${new Date(img.stats.mtime).toLocaleString()})${reset}`;
+                  return `${prefix}${label}`;
+                }
+              })
+              .join('\n');
+
+            // Clear screen and move cursor to top to prevent ghosting
+            const clearScreen = this.state == 'submit' ? '' : '\x1b[2J\x1b[H';
+
+            let output = `${clearScreen}◆  Select Image for Video Generation\n`;
+
+            output += indentBlock(optionsList, 2, this.state, false);
+
+            output += '\n';
+            output += indentBlock(
+              '  ' + currentImageData.preview ?? '',
+              2,
+              this.state,
+              false
+            );
+
+            if (this.state !== 'submit') {
+              output += '\n';
+              output += indentBlock(
+                `${dim}Use ↑↓ to select, Enter to confirm, Esc to cancel${reset}`,
+                2,
+                this.state
+              );
+            }
+
+            return output.trim();
+          },
+        });
+
+        const selectedImageIndex = await selectPrompt.prompt();
+
+        if (isCancel(selectedImageIndex)) {
+          cancel('Video generation cancelled.');
+          process.exit(0);
+        }
+
+        selectedImage = allImages[parseInt(selectedImageIndex as string)];
+        isImageToVideo = true;
+        log.step(`Selected image for image-to-video: ${selectedImage.name}`);
+      }
+    }
+  }
+
+  // Get video prompt
+  const videoPrompt =
+    promptFromArgs ||
+    (await text({
+      message: isImageToVideo
+        ? 'Video prompt (describe the motion/animation)'
+        : 'Video prompt',
+      placeholder: isImageToVideo
+        ? 'The camera slowly zooms out, revealing a vast landscape'
+        : 'A serene mountain landscape with flowing clouds and gentle wind',
+      initialValue: '',
+    }));
+
+  if (isCancel(videoPrompt)) {
+    cancel('Video generation cancelled.');
+    process.exit(0);
+  }
+
+  // Get aspect ratio
+  const aspectRatio =
+    (argv.aspectRatio as AspectRatio) ||
+    ((await select({
+      message: 'Select aspect ratio',
+      options: [
+        { value: '16:9', label: '16:9 (Landscape)' },
+        { value: '9:16', label: '9:16 (Portrait)' },
+        { value: '1:1', label: '1:1 (Square)' },
+      ],
+    })) as AspectRatio);
+
+  if (isCancel(aspectRatio)) {
+    cancel('Video generation cancelled.');
+    process.exit(0);
+  }
+
+  const s = spinner();
+  s.start(
+    isImageToVideo
+      ? 'Generating video from image...'
+      : 'Generating video from text...'
+  );
+
+  try {
+    let result;
+
+    if (isImageToVideo) {
+      // Upload the selected image to fal.ai storage
+      const imageFileToUpload = new File(
+        [fs.readFileSync(selectedImage.path)],
+        selectedImage.name,
+        {
+          type: 'image/png',
+        }
+      );
+      const imageUrl = await falClient.storage.upload(imageFileToUpload);
+
+      // Use image-to-video model
+      result = await falClient.subscribe(
+        'fal-ai/kling-video/v2.5-turbo/pro/image-to-video',
+        {
+          input: {
+            image_url: imageUrl,
+            prompt: videoPrompt as string,
+            aspect_ratio: aspectRatio,
+          },
+          logs: true,
+          onQueueUpdate: update => {
+            if (update.status === 'IN_PROGRESS') {
+              s.message(
+                `Generating video... ${update.logs?.map(log => log.message).join(' ')}`
+              );
+            }
+          },
+        }
+      );
+    } else {
+      // Use text-to-video model
+      result = await falClient.subscribe(
+        'fal-ai/kling-video/v2.5-turbo/pro/text-to-video',
+        {
+          input: {
+            prompt: videoPrompt as string,
+            aspect_ratio: aspectRatio,
+          },
+          logs: true,
+          onQueueUpdate: update => {
+            if (update.status === 'IN_PROGRESS') {
+              s.message(
+                `Generating video... ${update.logs?.map(log => log.message).join(' ')}`
+              );
+            }
+          },
+        }
+      );
+    }
+
+    s.stop('Video generated');
+
+    // Save the video
+    const videoFilename = `video-${Date.now()}.mp4`;
+    const videoPath = path.join(outputDir, videoFilename);
+
+    // Download the video
+    const videoResponse = await fetch(result.data.video.url);
+    const videoBuffer = await videoResponse.arrayBuffer();
+    fs.writeFileSync(videoPath, Buffer.from(videoBuffer));
+
+    log.step(`Video saved to ${videoFilename}`);
+    log.info(`Video URL: ${result.data.video.url}`);
+
+    // Show video info
+    log.step(`Duration: ${result.data.duration}s`);
+    log.step(`Aspect ratio: ${aspectRatio}`);
+  } catch (error) {
+    s.stop('Video generation failed');
+    log.error(`Failed to generate video: ${error}`);
+    process.exit(1);
+  }
+
+  process.exit(0);
+}
+
 // Configure yargs
 const argv = await yargs(hideBin(process.argv))
   .scriptName('paint')
@@ -565,6 +842,30 @@ const argv = await yargs(hideBin(process.argv))
     },
     async argv => {
       await handleEditCommand(argv);
+    }
+  )
+  .command(
+    ['video', 'v'],
+    'Generate a video from text or image',
+    yargs => {
+      return yargs
+        .positional('image', {
+          type: 'string',
+          describe: 'Path to image file for image-to-video (optional)',
+        })
+        .positional('prompt', {
+          type: 'string',
+          describe: 'Prompt for video generation',
+        })
+        .option('aspect-ratio', {
+          type: 'string',
+          describe: 'Aspect ratio for the video',
+          choices: ['16:9', '9:16', '1:1'],
+        })
+        .strict(false); // Allow positional arguments
+    },
+    async argv => {
+      await handleVideoCommand(argv);
     }
   )
   .command(
@@ -653,6 +954,8 @@ const argv = await yargs(hideBin(process.argv))
     return [
       'image',
       'i',
+      'video',
+      'v',
       'last',
       'l',
       'edit',
@@ -664,6 +967,7 @@ const argv = await yargs(hideBin(process.argv))
       '--output',
       '--model',
       '-m',
+      '--aspect-ratio',
     ];
   })
   .help('help')
@@ -680,6 +984,19 @@ const argv = await yargs(hideBin(process.argv))
   .example('$0 last', 'Show last image')
   .example('$0 edit', 'Edit mode (select image)')
   .example('$0 edit image.png --prompt "add clouds"', 'Edit specific image')
+  .example('$0 video', 'Interactive video generation')
+  .example(
+    '$0 video --prompt "a sunset over mountains"',
+    'Generate text-to-video'
+  )
+  .example(
+    '$0 video image.png --prompt "camera zooms out"',
+    'Generate image-to-video'
+  )
+  .example(
+    '$0 video --aspect-ratio 9:16 --prompt "vertical video"',
+    'Generate with specific aspect ratio'
+  )
   .example('$0 config', 'Check API key status')
   .example('$0 config --api-key fal-xxx', 'Set up API key')
   .parse();
