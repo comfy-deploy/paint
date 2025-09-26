@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { getImageSequence } from './termimg.js';
+import { detectProtocol, getImageSequence } from './termimg.js';
 
 import {
   log,
@@ -17,6 +17,9 @@ import { hideBin } from 'yargs/helpers';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+
+// detectProtocol()
+// console.write(await getImageSequence('/Users/bennykok/Documents/GitHub/new-project/outputs/image-1758418870421.png', 400));
 
 // Config file management
 const CONFIG_DIR = path.join(os.homedir(), '.paintai');
