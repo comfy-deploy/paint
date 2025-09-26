@@ -1,3 +1,9 @@
+# [1.2.0](https://github.com/comfy-deploy/paint/compare/v1.1.0...v1.2.0) (2025-09-26)
+
+### Features
+
+- add rmbg and u for visual understand of an image ([8c324c5](https://github.com/comfy-deploy/paint/commit/8c324c5b8d4aeeda93aed94e1a439b276032ee00))
+
 # [1.1.0](https://github.com/comfy-deploy/paint/compare/v1.0.5...v1.1.0) (2025-09-25)
 
 ### Features
